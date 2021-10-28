@@ -1,6 +1,8 @@
 import datetime
 
 import mysql.connector
+from pytz import timezone
+from config import PASSWORD_MYSQL
 
 class Base():
 
@@ -8,7 +10,7 @@ class Base():
         self.con = self.__con()
 
     def __con(self):
-        con = mysql.connector.connect(host='localhost', user='root', password='#', db='reports')
+        con = mysql.connector.connect(host='localhost', user='root', password=PASSWORD_MYSQL, db='reports')
 
         mycursor = con.cursor()
         mycursor.execute("""
@@ -21,8 +23,8 @@ class Base():
             CREATE TABLE IF NOT EXISTS report(
                 user_id INTEGER NOT NULL,
                 day INT,
-                future_plans TEXT NULL,
-                opinion_about_day TEXT NULL
+                date TEXT,
+                report TEXT NULL
             )""")
 
         con.commit()
@@ -56,9 +58,9 @@ class Base():
         c.execute(f'UPDATE report SET opinion_about_day = "{opinion_about_day}" WHERE user_id = {int(user_id)}')
         self.con.commit()
 
-    def update_future_plans_of_user(self, user_id, future_plans):
+    def update_report_text_of_user(self, user_id, report_text):
         c = self.con.cursor()
-        c.execute(f'UPDATE report SET future_plans = "{future_plans}" WHERE user_id = {int(user_id)}')
+        c.execute(f'UPDATE report SET report = "{report_text}" WHERE user_id = {int(user_id)}')
         self.con.commit()
 
     def select_report_of_user(self, user_id):
@@ -80,14 +82,14 @@ class Base():
         data = cur.fetchall()
         return data
 
-    def create_report_of_user(self, user_id):
-        if self.select_report_of_user(user_id):
-            return False
+    def create_report_of_user(self, user_id, report_text):
+        # if self.select_report_of_user(user_id):
+        #     return False
 
-        now = datetime.datetime.now()
+        now = datetime.datetime.now(timezone('Poland'))
 
         cur = self.con.cursor()
-        cur.execute(f"INSERT report (user_id, day) VALUES ({user_id}, '{now.day}')")
+        cur.execute(f"INSERT report (user_id, day, date, report) VALUES ({user_id}, '{now.day}', '{now}', '{report_text}')")
         self.con.commit()
 
 #Base().select_all_users()

@@ -14,6 +14,7 @@ from key import key_i_am_working, key_when_remind
 from mysql_db import Base
 
 import datetime
+from pytz import timezone
 
 from services import *
 from config import *
@@ -43,8 +44,10 @@ async def start(message: types.Message):
 
 @dp.message_handler(state=Status.get_answer_about_future_plans)
 async def get_answer_about_future_plans(message: types.Message, state: FSMContext):
-    Base().update_future_plans_of_user(message.chat.id, message.text)
+    Base().create_report_of_user(message.chat.id, message.text)
     await message.answer("Желаю продуктивного дня!")
+
+    await send_report_to_admin(bot, message)
 
     await state.finish()
 
@@ -63,9 +66,11 @@ async def get_answer_opinion_about_day(message: types.Message, state: FSMContext
         await message.answer('Как прошел день?')
 
     else:
-        Base().update_opinion_about_day(message.chat.id, message.text)
+        Base().create_report_of_user(message.chat.id, message.text)
         await message.answer("Спасибо, желаю приятного вечера!")
         await state.finish()
+
+        await send_report_to_admin(bot, message)
 
 @dp.message_handler()
 async def mmm(message: types.Message):
@@ -74,121 +79,85 @@ async def mmm(message: types.Message):
         users = Base().select_all_users()
 
         with open('reports.csv', 'w') as file:
+            file.write('Дата; ID в телеграм; Имя в телеграме; Отчет;\n')
             for user in users:
                 his_reports = Base().select_all_reports_of_user(user[0])
                 for report in his_reports:
-                    file.write(f'{user[0]}; {user[1]}; {report[2]}; {report[3]}')
+                    file.write(f'{report[2]}; {user[0]}; {user[1]}; {report[3]};\n')
 
             # await message.reply_document(file)
         await bot.send_document(message.chat.id, open('reports.csv', 'r'))
             # await bot.send_document(message.chat.id, ('reports.csv', file))
 
+    elif message.chat.id in ADMINS:
+        return
+
     elif 'dkasdsadsads' == message.text:
         while True:
-            now = datetime.datetime.now()
+            now = datetime.datetime.now(timezone('Poland'))
 
             future_plan = False
             opinion_about_day = False
 
             # тек < 8:00
-            if now.hour <= HOUR_ASK_ABOUT_FUTURE_PLAN:
+            if datetime.time(now.hour, now.minute) <= datetime.time(HOUR_ASK_ABOUT_FUTURE_PLAN, MINUTE_ASK_ABOUT_FUTURE_PLAN):
                 print(f'Время меньше чем {HOUR_ASK_ABOUT_FUTURE_PLAN}   [HOUR_ASK_ABOUT_FUTURE_PLAN] 1')
                 future_plan = True
                 time_to_sleep = get_time_to_sleep(now.day, HOUR_ASK_ABOUT_FUTURE_PLAN, MINUTE_ASK_ABOUT_FUTURE_PLAN)
 
             # тек > 18:00
-            elif now.hour > HOUR_ASK_OPINION_ABOUT_PLAN:
+            elif datetime.time(now.hour, now.minute) >= datetime.time(HOUR_ASK_OPINION_ABOUT_PLAN, MINUTE_ASK_OPINION_ABOUT_PLAN):
                 print(f'Время больше чем {HOUR_ASK_OPINION_ABOUT_PLAN}   [HOUR_ASK_OPINION_ABOUT_PLAN] 2')
                 future_plan = True
                 time_to_sleep = get_time_to_sleep(now.day + 1, HOUR_ASK_ABOUT_FUTURE_PLAN, MINUTE_ASK_ABOUT_FUTURE_PLAN)
 
             # тек > 8:00
-            elif now.hour >= HOUR_ASK_ABOUT_FUTURE_PLAN:
+            elif datetime.time(now.hour, now.minute) >= datetime.time(HOUR_ASK_ABOUT_FUTURE_PLAN, MINUTE_ASK_ABOUT_FUTURE_PLAN):
                 print(f'Время больше чем {HOUR_ASK_ABOUT_FUTURE_PLAN}   [HOUR_ASK_ABOUT_FUTURE_PLAN] 3')
                 opinion_about_day = True
                 time_to_sleep = get_time_to_sleep(now.day, HOUR_ASK_OPINION_ABOUT_PLAN, MINUTE_ASK_OPINION_ABOUT_PLAN)
+                print(now.day, HOUR_ASK_OPINION_ABOUT_PLAN, MINUTE_ASK_OPINION_ABOUT_PLAN)
 
             print(f'Спим {time_to_sleep}')
             # time_to_sleep = 5
             await asyncio.sleep(time_to_sleep)
             all_users = Base().select_all_users()
 
-            #"""# Если сообщение отправляется в 8 утра"""
-            if future_plan:
+            for user in all_users:
 
-                # Делаем рассылку, где спрашиваем о планах на день
-                for user in all_users:
-                    await bot.send_message(user[0], TEXT_ASK_ABOUT_FUTURE_PLAN)
+                report = Base().select_report_of_user(user[0])
+                if not report:
 
-                    Base().create_report_of_user(user[0])
+                    if opinion_about_day:
+                        await bot.send_message(user[0], TEXT_ASK_OPINION_ABOUT_PLAN, reply_markup=key_i_am_working())
+                        state = dp.current_state(chat=user[0], user=user[0])
+                        await state.set_state(Status.get_answer_opinion_about_day)
 
-                    state = dp.current_state(chat=user[0], user=user[0])
-                    await state.set_state(Status.get_answer_about_future_plans)
+                    elif future_plan:
+                        await bot.send_message(user[0], TEXT_ASK_ABOUT_FUTURE_PLAN)
+                        state = dp.current_state(chat=user[0], user=user[0])
+                        await state.set_state(Status.get_answer_about_future_plans)
 
-                # Ждем пока пользователи ответят
-                await asyncio.sleep(10) # WAITING_FOR_THE_USERS_RESPONSE
+            # Ждем пока пользователи ответят
+            await asyncio.sleep(WAITING_FOR_THE_USERS_RESPONSE) # WAITING_FOR_THE_USERS_RESPONSE
 
-                # Проверяем написали ли пользователи отчет, если нет, то напоминаем им
-                for user in all_users:
-                    print(f"Проверяем пользователя {user[1]}")
-                    report = Base().select_report_of_user(user[0])
-                    if not report[2]:
-                        print("Проверка не пройдена")
+            # Проверяем написали ли пользователи отчет, если нет, то напоминаем им
+            for user in all_users:
+                report = Base().select_report_of_user(user[0])
+                if not report:
+
+                    if opinion_about_day:
+                        await bot.send_message(user[0], "Как прошел день? Почему молчишь?", reply_markup=key_i_am_working())
+                    elif future_plan:
                         await bot.send_message(user[0], "Ты что сегодня не работаешь? Напиши планы на день")
 
-                # Ждем пока пользователи ответят
-                # await asyncio.sleep(10) # WAITING_FOR_THE_USERS_RESPONSE
-                await asyncio.sleep(WAITING_FOR_THE_USERS_RESPONSE) # WAITING_FOR_THE_USERS_RESPONSE
+            await asyncio.sleep(WAITING_FOR_THE_USERS_RESPONSE)
 
-                for user in all_users:
-                    print("Делаем для пользователей (которые не ответили)")
-                    report = Base().select_report_of_user(user[0])
+    else:
+        Base().create_report_of_user(message.chat.id, message.text)
+        await message.answer("Спасибо за отчет")
 
-                    state = dp.current_state(chat=user[0], user=user[0])
-                    await state.set_state(Status.main)
-
-                    if not report[2]:
-                        Base().update_future_plans_of_user(user[0], "NONE")
-
-
-                time_to_sleep = get_time_to_sleep(now.day, HOUR_ASK_OPINION_ABOUT_PLAN-1, MINUTE_ASK_OPINION_ABOUT_PLAN)
-                # time_to_sleep = 5
-                print(f"Процедура закончена, спим к второму вопросу {time_to_sleep}")
-                await asyncio.sleep(time_to_sleep)
-
-            #"""# Если сообщение отправляется в 18 вечера"""
-            elif opinion_about_day:
-                # Делаем рассылку, где спрашиваем как прошел день
-                for user in all_users:
-                    await bot.send_message(user[0], TEXT_ASK_OPINION_ABOUT_PLAN, reply_markup=key_i_am_working())
-
-                    Base().create_report_of_user(user[0])
-
-                    state = dp.current_state(chat=user[0], user=user[0])
-                    await state.set_state(Status.get_answer_opinion_about_day)
-
-                # Ждем пока пользователи ответят
-                # await asyncio.sleep(10) # WAITING_FOR_THE_USERS_RESPONSE
-                await asyncio.sleep(WAITING_FOR_THE_USERS_RESPONSE) # WAITING_FOR_THE_USERS_RESPONSE
-
-                # Проверяем написали ли пользователи отчет, если нет, то напоминаем им
-                for user in all_users:
-                    report = Base().select_report_of_user(user[0])
-                    if not report[1]:
-                        await bot.send_message(user[0], "Как пришел день? Почему молчишь?", reply_markup=key_i_am_working())
-
-                # Ждем пока пользователи ответят
-                # await asyncio.sleep(10)
-                await asyncio.sleep(WAITING_FOR_THE_USERS_RESPONSE) # WAITING_FOR_THE_USERS_RESPONSE
-
-                for user in all_users:
-                    report = Base().select_report_of_user(user[0])
-
-                    state = dp.current_state(chat=user[0], user=user[0])
-                    await state.set_state(Status.main)
-
-                    if not report[1]:
-                        await Base().update_opinion_about_day(user[0], "NONE")
+        await send_report_to_admin(bot, message)
 
 @dp.callback_query_handler()
 async def main(call: CallbackQuery):
