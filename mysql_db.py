@@ -88,6 +88,7 @@ class Base():
 
         now = datetime.datetime.now(timezone('Poland'))
 
+        report_text = report_text.replace('\n', '   |   ')
         cur = self.con.cursor()
         cur.execute(f"INSERT report (user_id, day, date, report) VALUES ({user_id}, '{now.day}', '{now}', '{report_text}')")
         self.con.commit()

@@ -30,25 +30,32 @@ dp = Dispatcher(bot,storage=storage)
 
 class Status(StatesGroup):
     main = State()
+    get_name = State()
     get_answer_about_future_plans = State()
     get_answer_opinion_about_day = State()
 
 @dp.message_handler(commands=['start'])
-async def start(message: types.Message):
-    await message.answer('Приветствую!')
+async def start(message: types.Message, state: FSMContext):
+    await message.answer('Здраствуйте, как могу к вам обращаться?')
 
-    Base().insert_user(message.chat.id, message.from_user.first_name)
+    await Status.get_name.set()
 
 
+
+
+
+@dp.message_handler(state=Status.get_name)
+async def get_answer_about_future_plans(message: types.Message, state: FSMContext):
+        Base().insert_user(message.chat.id, message.text)
+        await message.answer(f"Ок, буду к тебе обращаться {message.text}")
+        await state.finish()
 
 
 @dp.message_handler(state=Status.get_answer_about_future_plans)
 async def get_answer_about_future_plans(message: types.Message, state: FSMContext):
     Base().create_report_of_user(message.chat.id, message.text)
     await message.answer("Желаю продуктивного дня!")
-
     await send_report_to_admin(bot, message)
-
     await state.finish()
 
 
@@ -76,21 +83,9 @@ async def get_answer_opinion_about_day(message: types.Message, state: FSMContext
 async def mmm(message: types.Message):
     if '/admin' == message.text and message.chat.id in ADMINS:
         await message.answer(f"Всего пользователей - {len(Base().select_all_users())}\nВсего отчетов - {len(Base().select_all_reports())}")
-        users = Base().select_all_users()
-
-        with open('reports.csv', 'w') as file:
-            file.write('Дата; ID в телеграм; Имя в телеграме; Отчет;\n')
-            for user in users:
-                his_reports = Base().select_all_reports_of_user(user[0])
-                for report in his_reports:
-                    file.write(f'{report[2]}; {user[0]}; {user[1]}; {report[3]};\n')
-
-            # await message.reply_document(file)
+        create_excel_report()
         await bot.send_document(message.chat.id, open('reports.csv', 'r'))
-            # await bot.send_document(message.chat.id, ('reports.csv', file))
 
-    elif message.chat.id in ADMINS:
-        return
 
     elif 'dkasdsadsads' == message.text:
         while True:
@@ -119,14 +114,16 @@ async def mmm(message: types.Message):
                 print(now.day, HOUR_ASK_OPINION_ABOUT_PLAN, MINUTE_ASK_OPINION_ABOUT_PLAN)
 
             print(f'Спим {time_to_sleep}')
-            # time_to_sleep = 5
             await asyncio.sleep(time_to_sleep)
-            all_users = Base().select_all_users()
 
-            for user in all_users:
+            # Если сегодня не выходной
+            if datetime.datetime.today().weekday() not in [5,6]:
+                all_users = Base().select_all_users()
 
-                report = Base().select_report_of_user(user[0])
-                if not report:
+                print("Напоминание пользователям")
+                for user in all_users:
+                    if user[0] in ADMINS:
+                        continue
 
                     if opinion_about_day:
                         await bot.send_message(user[0], TEXT_ASK_OPINION_ABOUT_PLAN, reply_markup=key_i_am_working())
@@ -138,20 +135,30 @@ async def mmm(message: types.Message):
                         state = dp.current_state(chat=user[0], user=user[0])
                         await state.set_state(Status.get_answer_about_future_plans)
 
-            # Ждем пока пользователи ответят
-            await asyncio.sleep(WAITING_FOR_THE_USERS_RESPONSE) # WAITING_FOR_THE_USERS_RESPONSE
+                # Ждем пока пользователи ответят
+                await asyncio.sleep(WAITING_FOR_THE_USERS_RESPONSE) # WAITING_FOR_THE_USERS_RESPONSE
 
-            # Проверяем написали ли пользователи отчет, если нет, то напоминаем им
-            for user in all_users:
-                report = Base().select_report_of_user(user[0])
-                if not report:
+                # Проверяем написали ли пользователи отчет, если нет, то напоминаем им
+                for user in all_users:
+                    if user[0] in ADMINS:
+                        continue
 
-                    if opinion_about_day:
-                        await bot.send_message(user[0], "Как прошел день? Почему молчишь?", reply_markup=key_i_am_working())
-                    elif future_plan:
-                        await bot.send_message(user[0], "Ты что сегодня не работаешь? Напиши планы на день")
+                    report = Base().select_report_of_user(user[0])
+                    if not report:
+
+                        if opinion_about_day:
+                            await bot.send_message(user[0], "Как прошел день? Почему молчишь?", reply_markup=key_i_am_working())
+                        elif future_plan:
+                            await bot.send_message(user[0], "Ты что сегодня не работаешь? Напиши планы на день")
+
+            else:
+                print("Сегодня выходной, ждем будни дни [спим 2 час = 2*60*60]")
+                await asyncio.sleep(2*60*60)
 
             await asyncio.sleep(WAITING_FOR_THE_USERS_RESPONSE)
+
+    elif message.chat.id in ADMINS:
+        await message.answer("Вы не можете писать отчет, вы админ /admin")
 
     else:
         Base().create_report_of_user(message.chat.id, message.text)
