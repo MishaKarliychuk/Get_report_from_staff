@@ -44,10 +44,17 @@ class Base():
         return data
 
     def insert_user(self, user_id, telegram_name):
+        # если пользователь уже создан, то обновляем его никнейм
         if self.select_user(user_id):
+            self.update_telegram_name_user(user_id, telegram_name)
             return False
         cur = self.con.cursor()
         cur.execute(f"INSERT users (user_id, telegram_name) VALUES ({user_id}, '{telegram_name}')")
+        self.con.commit()
+
+    def update_telegram_name_user(self, user_id, telegram_name):
+        c = self.con.cursor()
+        c.execute(f'UPDATE users SET telegram_name = "{telegram_name}" WHERE user_id = {int(user_id)}')
         self.con.commit()
 
 
@@ -64,6 +71,7 @@ class Base():
         self.con.commit()
 
     def select_report_of_user(self, user_id):
+        """Достает отчет от пользователя за сегодня"""
         now = datetime.datetime.now()
         cur = self.con.cursor()
         cur.execute(f"SELECT * FROM `report` WHERE user_id = {user_id} AND day = {now.day}")

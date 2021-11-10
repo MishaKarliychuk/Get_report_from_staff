@@ -65,10 +65,10 @@ async def get_answer_opinion_about_day(message: types.Message, state: FSMContext
     if "Еще работаю" == message.text:
         await message.answer('Когда тебе напомнить?', reply_markup=key_when_remind())
 
-    elif 'через 20 мин' == message.text or 'через 30 мин' == message.text or 'через 1 мин' == message.text:
-        if 'через 20 мин' == message.text: time = 10*60
-        elif 'через 30 мин' == message.text: time = 20*60
-        else: time = 30*60
+    elif 'через 20 мин' == message.text or 'через 30 мин' == message.text or 'через 1 час' == message.text:
+        if 'через 20 мин' == message.text: time = 20*60
+        elif 'через 30 мин' == message.text: time = 30*60
+        else: time = 60*60
         await asyncio.sleep(time)
         await message.answer('Как прошел день?')
 
@@ -77,7 +77,7 @@ async def get_answer_opinion_about_day(message: types.Message, state: FSMContext
         await message.answer("Спасибо, желаю приятного вечера!")
         await state.finish()
 
-        await send_report_to_admin(bot, message)
+        await send_report_to_admin(bot, message, night_report=True)
 
 @dp.message_handler()
 async def mmm(message: types.Message):
@@ -155,7 +155,7 @@ async def mmm(message: types.Message):
                 print("Сегодня выходной, ждем будни дни [спим 2 час = 2*60*60]")
                 await asyncio.sleep(2*60*60)
 
-            await asyncio.sleep(WAITING_FOR_THE_USERS_RESPONSE)
+            await asyncio.sleep(WAITING_FOR_THE_USERS_RESPONSE+2*60*60)
 
     elif message.chat.id in ADMINS:
         await message.answer("Вы не можете писать отчет, вы админ /admin")

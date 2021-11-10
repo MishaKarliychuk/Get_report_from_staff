@@ -6,21 +6,27 @@ import aiogram
 from mysql_db import *
 
 def get_time_to_sleep(day, hour, minute):
-
+    """Достает время в секундах между датами"""
     now_d = datetime.datetime.now(timezone('Poland'))
     future_date = datetime.datetime(now_d.year, now_d.month, day, hour, minute, tzinfo=timezone('Poland'))
     seconds = (future_date - now_d).total_seconds() - 2160
     return seconds
 
-async def send_report_to_admin(bot, message_obj):
+async def send_report_to_admin(bot, message_obj, night_report=False):
+    """Отправляет отчет админам, если отчет вечерний (night_report=True) - то пишет что это ОТЧЕТ, если наоборот то это ПЛАН"""
     for admin_id in ADMINS:
         user = Base().select_user(message_obj.chat.id)
         try:
-            await bot.send_message(admin_id, f"Отчет от пользователя <b>{user[1]}</b>\n\n{message_obj.text}", parse_mode='html')
+            if night_report:
+                await bot.send_message(admin_id, f"Отчет от пользователя <b>{user[1]}</b>\n\n{message_obj.text}", parse_mode='html')
+            else:
+                await bot.send_message(admin_id, f"План от пользователя <b>{user[1]}</b>\n\n{message_obj.text}",
+                                       parse_mode='html')
         except aiogram.utils.exceptions.ChatNotFound:
-            pass
+            continue
 
 def create_excel_report():
+    """Делает excel файл-репорт"""
     users = Base().select_all_users()
     with open('reports.csv', 'w') as file:
         file.write(u'Дата; ID в телеграм; Имя в телеграме; Отчет;\n')
